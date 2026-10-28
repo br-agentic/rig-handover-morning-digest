@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import type { DigestRow, Night, ReadNight, Status } from './types.js';
+import type { DigestRow, ReadNight, Status } from './types.js';
 
 const statuses: readonly string[] = ['ok', 'retry', 'fail'];
 
@@ -23,6 +23,7 @@ function parse(line: string) {
 }
 
 export const readNight: ReadNight = (runsDir, night) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(night)) return null; // route param: no path tricks
   let text: string;
   try {
     text = readFileSync(`${runsDir}/${night}.jsonl`, 'utf8');
@@ -31,6 +32,7 @@ export const readNight: ReadNight = (runsDir, night) => {
   }
   const rows = new Map<string, DigestRow>();
   let bad = 0;
+  const counts = { ok: 0, retry: 0, fail: 0 };
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     const e = parse(line);
@@ -39,6 +41,7 @@ export const readNight: ReadNight = (runsDir, night) => {
       continue;
     }
     const row = rows.get(e.job) ?? { job: e.job, owner: null, runs: 0, retries: 0, lastStatus: e.status, lastError: null, first: e.at, last: e.at };
+    counts[e.status]++;
     row.runs++;
     if (e.status === 'retry') row.retries++;
     row.lastStatus = e.status;
@@ -47,6 +50,5 @@ export const readNight: ReadNight = (runsDir, night) => {
     row.lastError = e.error ?? row.lastError;
     rows.set(e.job, row);
   }
-  const result: Night = { rows: [...rows.values()].sort((a, b) => (a.job < b.job ? -1 : a.job > b.job ? 1 : 0)), bad };
-  return result;
+  return { rows: [...rows.values()].sort((a, b) => (a.job < b.job ? -1 : a.job > b.job ? 1 : 0)), bad, counts };
 };
